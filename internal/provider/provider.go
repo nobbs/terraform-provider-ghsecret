@@ -6,13 +6,14 @@ package provider
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/function"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
-	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/lithammer/dedent"
 )
 
 // Ensure GHSecretProvider satisfies various provider interfaces.
@@ -29,7 +30,6 @@ type GHSecretProvider struct {
 
 // GHSecretProviderModel describes the provider data model.
 type GHSecretProviderModel struct {
-	Endpoint types.String `tfsdk:"endpoint"`
 }
 
 func (p *GHSecretProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
@@ -39,12 +39,32 @@ func (p *GHSecretProvider) Metadata(ctx context.Context, req provider.MetadataRe
 
 func (p *GHSecretProvider) Schema(ctx context.Context, req provider.SchemaRequest, resp *provider.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Attributes: map[string]schema.Attribute{
-			"endpoint": schema.StringAttribute{
-				MarkdownDescription: "Example provider attribute",
-				Optional:            true,
-			},
-		},
+		MarkdownDescription: strings.TrimSpace(dedent.Dedent(`
+			The GitHub Secrets provider allows you to encrypt plain text to be stored as an pre-encrypted
+			GitHub secret via the [github](https://registry.terraform.io/providers/hashicorp/github) provider.
+			This way, no plain text secrets need to be stored in the Terraform state.
+
+			The data is encrypted using the [libsodium sealed box encryption scheme](https://libsodium.gitbook.io/doc/public-key_cryptography/sealed_boxes)
+			and the [public key of the GitHub repository](https://docs.github.com/en/rest/actions/secrets?apiVersion=2022-11-28#get-a-repository-public-key)
+			where the secret will be stored. The encrypted data is then base64 encoded and returned as a
+			string ready to be used in the GitHub provider.
+
+			The encryption is done using the [anonymous sealed box encryption](https://pkg.go.dev/golang.org/x/crypto/nacl/box#SealAnonymous)
+			provided by the Go implementation of libsodium. Part of this encryption scheme is the generation
+			of a ephemeral key pair that is used to encrypt the data with the public key of the GitHub
+			repository. The ephemeral public key is included in the encrypted data and is used by the
+			GitHub repository to decrypt the data. This way, the data can only be decrypted by the GitHub
+			repository that has the corresponding private key.
+
+			**Caution:** the ephemeral key pair requires a random number generator for secure key generation.
+			This provider uses a random number generator seeded with data derived from the hash of the cleartext
+			data to ensure that the ephemeral key pair is deterministic for a given cleartext. This is done,
+			since Terraform expects consitent results for a given input and the encryption otherwise would
+			result in different outputs for the same input on each run. This is most likely not to be
+			considered secure in a **strict cryptographic sense**, but still an improvement over ending up with
+			plain text secrets in the Terraform state.
+		`)),
+		Attributes: map[string]schema.Attribute{},
 	}
 }
 
