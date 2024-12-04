@@ -19,7 +19,7 @@ repository that has the corresponding private key.
 **Caution:** the ephemeral key pair requires a random number generator for secure key generation.
 This provider uses a random number generator seeded with data derived from the hash of the cleartext
 data to ensure that the ephemeral key pair is deterministic for a given cleartext. This is done,
-since Terraform expects consitent results for a given input and the encryption otherwise would
+since Terraform expects constant results for a given input and the encryption otherwise would
 result in different outputs for the same input on each run. This is most likely not to be
 considered secure in a **strict cryptographic sense**, but still an improvement over ending up with
 plain text secrets in the Terraform state.
