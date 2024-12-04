@@ -1,64 +1,97 @@
-# Terraform Provider Scaffolding (Terraform Plugin Framework)
+# GitHub Secrets Provider
 
-_This template repository is built on the [Terraform Plugin Framework](https://github.com/hashicorp/terraform-plugin-framework). The template repository built on the [Terraform Plugin SDK](https://github.com/hashicorp/terraform-plugin-sdk) can be found at [terraform-provider-scaffolding](https://github.com/hashicorp/terraform-provider-scaffolding). See [Which SDK Should I Use?](https://developer.hashicorp.com/terraform/plugin/framework-benefits) in the Terraform documentation for additional information._
+This provider allows you to encrypt plain text to be stored as an pre-encrypted
+GitHub secret via the [github](https://registry.terraform.io/providers/hashicorp/github) provider.
+This way, no plain text secrets need to be stored in the Terraform state.
 
-This repository is a *template* for a [Terraform](https://www.terraform.io) provider. It is intended as a starting point for creating Terraform providers, containing:
+The data is encrypted using the [libsodium sealed box encryption scheme](https://libsodium.gitbook.io/doc/public-key_cryptography/sealed_boxes)
+and the [public key of the GitHub repository](https://docs.github.com/en/rest/actions/secrets?apiVersion=2022-11-28#get-a-repository-public-key)
+where the secret will be stored. The encrypted data is then base64 encoded and returned as a
+string ready to be used in the GitHub provider.
 
-- A resource and a data source (`internal/provider/`),
-- Examples (`examples/`) and generated documentation (`docs/`),
-- Miscellaneous meta files.
+The encryption is done using the [anonymous sealed box encryption](https://pkg.go.dev/golang.org/x/crypto/nacl/box#SealAnonymous)
+provided by the Go implementation of libsodium. Part of this encryption scheme is the generation
+of a ephemeral key pair that is used to encrypt the data with the public key of the GitHub
+repository. The ephemeral public key is included in the encrypted data and is used by the
+GitHub repository to decrypt the data. This way, the data can only be decrypted by the GitHub
+repository that has the corresponding private key.
 
-These files contain boilerplate code that you will need to edit to create your own Terraform provider. Tutorials for creating Terraform providers can be found on the [HashiCorp Developer](https://developer.hashicorp.com/terraform/tutorials/providers-plugin-framework) platform. _Terraform Plugin Framework specific guides are titled accordingly._
-
-Please see the [GitHub template repository documentation](https://help.github.com/en/github/creating-cloning-and-archiving-repositories/creating-a-repository-from-a-template) for how to create a new repository from this template on GitHub.
-
-Once you've written your provider, you'll want to [publish it on the Terraform Registry](https://developer.hashicorp.com/terraform/registry/providers/publishing) so that others can use it.
+**Caution:** the ephemeral key pair requires a random number generator for secure key generation.
+This provider uses a random number generator seeded with data derived from the hash of the cleartext
+data to ensure that the ephemeral key pair is deterministic for a given cleartext. This is done,
+since Terraform expects consitent results for a given input and the encryption otherwise would
+result in different outputs for the same input on each run. This is most likely not to be
+considered secure in a **strict cryptographic sense**, but still an improvement over ending up with
+plain text secrets in the Terraform state.
 
 ## Requirements
 
-- [Terraform](https://developer.hashicorp.com/terraform/downloads) >= 1.0
-- [Go](https://golang.org/doc/install) >= 1.22
+As provider functions are a fairly new feature in Terraform, you will need to be using Terraform v1.8 or later.
 
-## Building The Provider
+## Usage
 
-1. Clone the repository
-1. Enter the repository directory
-1. Build the provider using the Go `install` command:
+This provider contains only one provider function:
 
-```shell
-go install
+- `encrypt` - Encrypts a plain text with the public key of a GitHub repository to be stored as a GitHub secret.
+
+To make use of the provider, you will need to add the provider to your Terraform configuration:
+
+```hcl
+terraform {
+  required_providers {
+    ghsecret = {
+      source = "nobbs/ghsecret"
+      version = "~> 0.1.0"
+    }
+  }
+}
+
+# The provider has no configuration options
+provider "ghsecret" {}
 ```
 
-## Adding Dependencies
+## Examples
 
-This provider uses [Go modules](https://github.com/golang/go/wiki/Modules).
-Please see the Go documentation for the most up to date information about using Go modules.
+This example can also be found in the [examples](./examples) directory.
 
-To add a new dependency `github.com/author/dependency` to your Terraform provider:
+Once the provider is configured, you can use the provider functions in your Terraform configuration, for example like this:
 
-```shell
-go get github.com/author/dependency
-go mod tidy
-```
+```hcl
+data "github_actions_public_key" "repo" {
+  repository = "terraform-provider-ghsecret"
+}
 
-Then commit the changes to `go.mod` and `go.sum`.
+resource "github_actions_secret" "this" {
+  repository  = "terraform-provider-ghsecret"
+  secret_name = "EXAMPLE_SECRET"
+  encrypted_value = provider::ghsecret::encrypt(
+    "Hello, World!",
+    data.github_actions_public_key.repo.key
+  )
+}
 
-## Using the provider
+output "raw" {
+  value = nonsensitive(github_actions_secret.this.encrypted_value)
+}
 
-Fill this in for each provider
-
-## Developing the Provider
-
-If you wish to work on the provider, you'll first need [Go](http://www.golang.org) installed on your machine (see [Requirements](#requirements) above).
-
-To compile the provider, run `go install`. This will build the provider and put the provider binary in the `$GOPATH/bin` directory.
-
-To generate or update documentation, run `make generate`.
-
-In order to run the full suite of Acceptance tests, run `make testacc`.
-
-*Note:* Acceptance tests create real resources, and often cost money to run.
-
-```shell
-make testacc
+# data "github_actions_public_key" "repo" {
+#     id         = (sensitive value)
+#     key        = (sensitive value)
+#     key_id     = (sensitive value)
+#     repository = "terraform-provider-ghsecret"
+# }
+#
+# resource "github_actions_secret" "this" {
+#     created_at      = "2024-12-04 22:27:42 +0000 UTC"
+#     encrypted_value = (sensitive value)
+#     id              = "terraform-provider-ghsecret:EXAMPLE_SECRET"
+#     plaintext_value = (sensitive value)
+#     repository      = "terraform-provider-ghsecret"
+#     secret_name     = "EXAMPLE_SECRET"
+#     updated_at      = "2024-12-04 22:27:42 +0000 UTC"
+# }
+#
+# Outputs:
+#
+# raw = "23k/JkPJ..."
 ```
