@@ -52,13 +52,9 @@ func TestEncryptFunction(t *testing.T) {
 				ConfigStateChecks: []statecheck.StateCheck{
 					statecheck.ExpectKnownOutputValue(
 						"encrypted",
-						knownvalue.ObjectPartial(map[string]knownvalue.Check{
-							"encrypted": knownvalue.NotNull(),
-							"sha256":    knownvalue.NotNull(),
-						}),
+						knownvalue.NotNull(),
 					),
 				},
-				ExpectNonEmptyPlan: true,
 			},
 		},
 	})
@@ -75,14 +71,9 @@ func testDecrypt(plaintext string, publicKey, privateKey [32]byte) resource.Test
 		}
 
 		// get the encrypted value
-		valueMap, ok := rs.Value.(map[string]interface{})
+		enc, ok := rs.Value.(string)
 		if !ok {
 			return fmt.Errorf("Output '%s': expected map, got %#v", name, rs)
-		}
-
-		enc, ok := valueMap["encrypted"].(string)
-		if !ok {
-			return fmt.Errorf("Output '%s': expected string, got %#v", name, rs)
 		}
 
 		// base64 decode the encrypted value

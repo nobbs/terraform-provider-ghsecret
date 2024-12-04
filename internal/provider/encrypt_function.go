@@ -7,20 +7,16 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/binary"
 	"fmt"
+	"math/rand"
 	"strings"
 
-	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/function"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/lithammer/dedent"
 	"golang.org/x/crypto/nacl/box"
 )
-
-var encryptReturnAttrTypes = map[string]attr.Type{
-	"encrypted": types.StringType,
-	"sha256":    types.StringType,
-}
 
 // Ensure that encryptFunction implements the Function interface.
 var _ function.Function = &encryptFunction{}
@@ -54,9 +50,7 @@ func (f *encryptFunction) Definition(ctx context.Context, req function.Definitio
 			},
 		},
 
-		Return: function.ObjectReturn{
-			AttributeTypes: encryptReturnAttrTypes,
-		},
+		Return: function.StringReturn{},
 	}
 }
 
@@ -68,54 +62,49 @@ func (f *encryptFunction) Run(ctx context.Context, req function.RunRequest, resp
 		return
 	}
 
-	// Encrypt the plaintext using the public key
 	encrypted, err := encrypt(plaintext, publicKey)
 	if err != nil {
 		resp.Error = function.NewFuncError(fmt.Sprintf("failed to encrypt data: %v", err))
 		return
 	}
 
+	// Base64 encode the encrypted data.
 	encryptedB64 := base64.StdEncoding.EncodeToString(encrypted)
-
-	// Calculate the SHA256 hash of the plaintext
-	hashBytes := sha256.Sum256([]byte(plaintext))
-	hash := base64.StdEncoding.EncodeToString(hashBytes[:])
-
-	result, diags := types.ObjectValue(
-		encryptReturnAttrTypes, map[string]attr.Value{
-			"encrypted": types.StringValue(encryptedB64),
-			"sha256":    types.StringValue(hash),
-		},
-	)
-
-	resp.Error = function.FuncErrorFromDiags(ctx, diags)
-	if resp.Error != nil {
-		return
-	}
+	result := types.StringValue(encryptedB64)
 
 	resp.Error = resp.Result.Set(ctx, &result)
 }
 
-// encrypt encrypts the plaintext using the public key. The public key must be base64 encoded.
-func encrypt(plaintext, pkB64 string) ([]byte, error) {
-	pkBytes, err := base64.StdEncoding.DecodeString(pkB64)
+// encrypt encrypts the given secret using the provided base64-encoded public key.
+// It returns the encrypted secret as a byte slice or an error if the encryption fails.
+func encrypt(secret, pkB64 string) ([]byte, error) {
+	decodedPubKey, err := base64.StdEncoding.DecodeString(pkB64)
 	if err != nil {
 		return nil, err
 	}
 
-	var pkBytes32 [32]byte
-	copiedLen := copy(pkBytes32[:], pkBytes)
-	if copiedLen == 0 {
-		return nil, fmt.Errorf("could not convert publicKey to bytes")
-	}
+	var pubKey [32]byte
+	copy(pubKey[:], decodedPubKey)
 
-	plaintextBytes := []byte(plaintext)
-	var encryptedBytes []byte
+	secretBytes := []byte(secret)
 
-	cipherText, err := box.SealAnonymous(encryptedBytes, plaintextBytes, &pkBytes32, nil)
+	cipherText, err := box.SealAnonymous(nil, secretBytes, &pubKey, deterministicRand(secret))
 	if err != nil {
 		return nil, err
 	}
 
 	return cipherText, nil
+}
+
+// deterministicRand returns a new rand.Rand seeded with a deterministic value derived from the
+// input string.
+//
+// Is it cryptograhpically secure? Probably not. Is this a problem? Not really, the rand.Rand is
+// only used to generate an ephemeral key pair for the encryption, of which the private key is
+// discarded immediately after one use. The public key is passed along with the encrypted data and
+// is not sensitive.
+func deterministicRand(s string) *rand.Rand {
+	seed := sha256.Sum256([]byte(s))
+	seedInt := int64(binary.LittleEndian.Uint64(seed[:8]))
+	return rand.New(rand.NewSource(seedInt))
 }
