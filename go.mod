@@ -1,6 +1,6 @@
 module github.com/nobbs/terraform-provider-ghsecret
 
-go 1.23.3
+go 1.24.2
 
 require (
 	github.com/hashicorp/go-version v1.7.0
