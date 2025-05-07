@@ -25,6 +25,8 @@ linters:
     - unused
     - govet
 
+# The 'formatters' block specifies which code formatters are enabled.
+# Formatters are tools that automatically format code to adhere to style guidelines.
 formatters:
   enable:
     - gofmt
