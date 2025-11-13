@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/nobbs/terraform-provider-ghsecret/compare/v0.1.2...v0.1.3) (2025-11-13)
+
+
+### Build System
+
+* **deps:** bump golang.org/x/crypto from 0.43.0 to 0.44.0 ([#37](https://github.com/nobbs/terraform-provider-ghsecret/issues/37)) ([0902915](https://github.com/nobbs/terraform-provider-ghsecret/commit/09029157ec21a1bf6bc586bcedefefaf3332c2df))
+
 ## [0.1.2](https://github.com/nobbs/terraform-provider-ghsecret/compare/v0.1.1...v0.1.2) (2025-11-10)
 
 
